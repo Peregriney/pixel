@@ -142,69 +142,107 @@ function renderUI() {
 
 function deployPig(index) {
     const p = pigsInQueue[index];
+    if (p.current <= 0) return;
     p.isOnBelt = true;
     activePigs.push({
         color: p.color,
-        perimeterPos: 0, // track along perimeter
+        perimeterPos: 0,        // distance traveled along the perimeter
         speed: 2.5,
-        ammo: p.current,
-        uID: index,
-        x: 0, y: 0,
-        hasShotThisLoop: false
+        ammo: p.current,        // remaining pixels of this color
+        uID: index,             // index back to queue
+        x: OFFSET,              // start bottom-left
+        y: cvs.height - OFFSET,
+        hasShotThisLap: false   // track if pig shot this lap
     });
     renderUI();
 }
 
 function update() {
-    if(!imgLoaded) return;
+    if (!imgLoaded) return;
 
     const pathPadding = 10;
     const beltW = cvs.width - pathPadding * 2;
     const beltH = cvs.height - pathPadding * 2;
-    const perimeter = (beltW + beltH) * 2;
+    const perimeter = 2 * (beltW + beltH);
 
-    activePigs.forEach((pig, pIdx) => {
-        pig.perimeterPos = (pig.perimeterPos + pig.speed) % perimeter;
-
-        // Counter-clockwise mapping starting bottom-left
-        if(pig.perimeterPos < beltH) { pig.x = pathPadding; pig.y = cvs.height - pathPadding - pig.perimeterPos; } // Left
-        else if(pig.perimeterPos < beltH + beltW) { pig.x = (pig.perimeterPos - beltH) + pathPadding; pig.y = pathPadding; } // Top
-        else if(pig.perimeterPos < beltH*2 + beltW) { pig.x = cvs.width - pathPadding; pig.y = (pig.perimeterPos - (beltH + beltW)) + pathPadding; } // Right
-        else { pig.x = cvs.width - (pig.perimeterPos - (beltH*2 + beltW)) - pathPadding; pig.y = cvs.height - pathPadding; } // Bottom
-
-        if(!pig.hasShotThisLoop) {
-            // Shoot one layer
-            for(let cell of grid) {
-                if(cell.active && cell.color === pig.color) {
-                    const cx = cell.x * cellSize + OFFSET + cellSize/2;
-                    const cy = cell.y * cellSize + OFFSET + cellSize/2;
-                    const alignedX = Math.abs(pig.x - cx) < pig.speed;
-                    const alignedY = Math.abs(pig.y - cy) < pig.speed;
-                    if(alignedX || alignedY) {
-                        projectiles.push({ x: pig.x, y: pig.y, tx: cx, ty: cy, color: pig.color, life: 1.0 });
-                        cell.active = false;
-                        pig.ammo--;
-                        pigsInQueue[pig.uID].current--;
-                        totalPixelsToClear--;
-                    }
-                }
-            }
-            pig.hasShotThisLoop = true; // only one layer per loop
+    activePigs.forEach((pig) => {
+        // Move pig along perimeter
+        pig.perimeterPos += pig.speed;
+        if (pig.perimeterPos >= perimeter) {
+            pig.perimeterPos -= perimeter;
+            pig.hasShotThisLap = false; // Reset shooting for new lap
         }
 
-        // Reset for next loop
-        if(pig.perimeterPos < pig.speed) pig.hasShotThisLoop = false;
+        // Map perimeterPos to counter-clockwise coordinates
+        if (pig.perimeterPos < beltH) {
+            // Left edge (bottom to top)
+            pig.x = pathPadding;
+            pig.y = cvs.height - pathPadding - pig.perimeterPos;
+        } else if (pig.perimeterPos < beltH + beltW) {
+            // Top edge (left to right)
+            pig.x = pathPadding + (pig.perimeterPos - beltH);
+            pig.y = pathPadding;
+        } else if (pig.perimeterPos < 2 * beltH + beltW) {
+            // Right edge (top to bottom)
+            pig.x = cvs.width - pathPadding;
+            pig.y = pathPadding + (pig.perimeterPos - (beltH + beltW));
+        } else {
+            // Bottom edge (right to left)
+            pig.x = cvs.width - pathPadding - (pig.perimeterPos - (2 * beltH + beltW));
+            pig.y = cvs.height - pathPadding;
+        }
+
+        // Shoot pixels: only once per lap
+        if (!pig.hasShotThisLap && pig.ammo > 0) {
+            // Find all active pixels of pig color
+            const targets = grid.filter(c => c.active && c.color === pig.color);
+
+            if (targets.length > 0) {
+                // Shoot one "layer": pick all pixels aligned horizontally or vertically
+                const px = pig.x;
+                const py = pig.y;
+                const layer = targets.filter(cell => {
+                    const cellX = cell.x * cellSize + OFFSET + cellSize / 2;
+                    const cellY = cell.y * cellSize + OFFSET + cellSize / 2;
+                    return Math.abs(cellX - px) < pig.speed || Math.abs(cellY - py) < pig.speed;
+                });
+
+                layer.forEach(cell => {
+                    const cellCenterX = cell.x * cellSize + OFFSET + cellSize / 2;
+                    const cellCenterY = cell.y * cellSize + OFFSET + cellSize / 2;
+                    projectiles.push({
+                        x: px, y: py,
+                        tx: cellCenterX, ty: cellCenterY,
+                        color: pig.color,
+                        life: 1.0
+                    });
+                    cell.active = false;
+                    pig.ammo--;
+                    pigsInQueue[pig.uID].current--;
+                    totalPixelsToClear--;
+                });
+
+                pig.hasShotThisLap = true; // Only one layer per lap
+                renderUI();
+            }
+        }
     });
 
     // Fade projectiles
-    projectiles = projectiles.filter(p => { p.life -= 0.1; return p.life > 0; });
+    projectiles = projectiles.filter(p => {
+        p.life -= 0.1;
+        return p.life > 0;
+    });
 
     // Remove pigs with no ammo
     const finishedPigs = activePigs.filter(p => p.ammo <= 0);
-    finishedPigs.forEach(fp => { pigsInQueue[fp.uID].isOnBelt = false; });
+    finishedPigs.forEach(fp => {
+        pigsInQueue[fp.uID].isOnBelt = false;
+    });
     activePigs = activePigs.filter(p => p.ammo > 0);
 
-    if(imgLoaded && totalPixelsToClear <= 0 && activePigs.length === 0) {
+    // Win condition
+    if (imgLoaded && totalPixelsToClear <= 0 && activePigs.length === 0) {
         totalPixelsToClear = 1;
         setTimeout(() => alert("🎉 All clear! Happy Birthday!"), 500);
     }
