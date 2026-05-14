@@ -6,20 +6,62 @@
     <title>Piggy Flow: Level 05-19</title>
     <style>
         :root { --bg: #2440d1; --panel: #1a1a1a; --text: #eee; }
-        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
-        #game-wrap { display: flex; flex-direction: column; align-items: center; gap: 15px; position: relative; }
-        #board-container { position: relative; border-radius: 8px; background: #2f43a3; box-shadow: 0 0 40px rgba(0,0,0,0.9); }
+        body { 
+            margin: 0; background: var(--bg); color: var(--text); 
+            font-family: 'Segoe UI', sans-serif; display: flex; 
+            flex-direction: column; align-items: center; 
+            justify-content: center; min-height: 100vh; overflow: hidden; 
+        }
+        #game-wrap { 
+            display: flex; flex-direction: column; align-items: center; 
+            gap: 15px; position: relative; width: 100%;
+        }
         
-        /* The reveal text now sits safely underneath the transparent canvas */
-        #reveal-text { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #e6b402; font-weight: 900; text-align: center; z-index: 1; pointer-events: none; width: 100%; height: 100%; }
+        /* Responsive scaling for the game board */
+        #board-container { 
+            position: relative; border-radius: 8px; background: #2f43a3; 
+            box-shadow: 0 0 40px rgba(0,0,0,0.9);
+            width: 95vw; max-width: 600px; /* 600px is the internal canvas resolution */
+            aspect-ratio: 1 / 1; 
+        }
         
-        canvas { background: transparent; cursor: crosshair; position: relative; z-index: 2; image-rendering: pixelated; }
-        #ui { display: flex; gap: 12px; padding: 15px; background: var(--panel); border-radius: 15px; border: 1px solid #333; z-index: 3; }
-        .pig-btn { width: 55px; height: 55px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; border: 2px solid #333; position: relative; }
+        /* Clamp makes the text shrink nicely on mobile */
+        #reveal-text { 
+            position: absolute; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; color: #ff3366; 
+            font-weight: 900; text-align: center; z-index: 1; pointer-events: none; 
+            width: 100%; height: 100%;
+        }
+        
+        /* The canvas scales to fill its responsive container */
+        canvas { 
+            width: 100%; height: 100%; background: transparent; 
+            cursor: crosshair; position: relative; z-index: 2; 
+            image-rendering: pixelated; 
+        }
+        
+        /* UI flex-wrap allows buttons to break to a new line on small screens */
+        #ui { 
+            display: flex; gap: 12px; padding: 15px; background: var(--panel); 
+            border-radius: 15px; border: 1px solid #333; z-index: 3;
+            flex-wrap: wrap; justify-content: center; max-width: 95vw; 
+            box-sizing: border-box;
+        }
+        
+        /* Slightly scaled buttons for mobile */
+        .pig-btn { 
+            width: clamp(45px, 12vw, 55px); height: clamp(45px, 12vw, 55px); 
+            border-radius: 12px; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; cursor: pointer; 
+            transition: 0.2s; border: 2px solid #333; position: relative; 
+        }
         .pig-btn:hover:not(.on-belt) { transform: translateY(-5px); border-color: #fff; }
         .pig-btn.on-belt { opacity: 0.5; cursor: wait; border-style: dashed; }
         .pig-btn.empty { display: none; }
-        .count { font-size: 11px; font-weight: bold; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 4px; margin-top: 2px; }
+        .count { 
+            font-size: 11px; font-weight: bold; background: rgba(0,0,0,0.5); 
+            padding: 2px 5px; border-radius: 4px; margin-top: 2px; 
+        }
     </style>
 </head>
 <body>
@@ -27,7 +69,7 @@
     <div id="board-container">
         <div id="reveal-text">
             <div style="font-size: 60px; line-height: 45px;">HAPPY<br>BIRTHDAY</div>
-                <div style="font-size: 20px; margin-top: 10px;">Next Level Unlocked:<br>Prague cake delivery<br>(React 👍 to accept)<br><br>
+                <div style="font-size: 20px; margin-top: 10px;">Next Level Unlocked: Prague cake delivery irl<br>(React 👍 to accept)<br><br>
                     Fire Challenge<br>(React 🔥)<br>
                     <br>Go Ad-Free!<br>(React 👎)<br>
                     <br></div>
@@ -73,7 +115,18 @@ function init() {
                 counts[hex] = (counts[hex] || 0) + 1;
             }
         }
-        pigsInQueue = Object.keys(counts).map(c => ({ color: c, current: counts[c], onBelt: false }));
+        pigsInQueue = [];
+        Object.keys(counts).forEach(c => {
+            if (c === "#000000") {
+                // Split the black pig total in half
+                let half1 = Math.ceil(counts[c] / 2);
+                let half2 = Math.floor(counts[c] / 2);
+                if (half1 > 0) pigsInQueue.push({ color: c, current: half1, onBelt: false });
+                if (half2 > 0) pigsInQueue.push({ color: c, current: half2, onBelt: false });
+            } else {
+                pigsInQueue.push({ color: c, current: counts[c], onBelt: false });
+            }
+        });
         renderUI();
         requestAnimationFrame(loop);
     };
