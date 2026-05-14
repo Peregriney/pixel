@@ -109,14 +109,15 @@ function deployPig(idx) {
     });
     renderUI();
 }
-    function update() {
-    const beltSize = GRID_SIZE * cellSize + 20; // Slight padding from grid
+    
+function update() {
+    const beltSize = GRID_SIZE * cellSize + 20; // Slight padding
     const start = OFFSET - 10;
     const perimeter = beltSize * 4;
-    const epsilon = 6; // tolerance for edge detection (use pig speed)
+    const epsilon = 6;
 
     activePigs.forEach((pig, pIdx) => {
-        // Move along counter-clockwise track
+        // Move pig along counter-clockwise track
         pig.pos += pig.speed;
         if (pig.pos >= perimeter) {
             pigsInQueue[pig.uID].onBelt = false;
@@ -125,54 +126,63 @@ function deployPig(idx) {
             return;
         }
 
-        // Counter-clockwise: right → up → left → down
+        // Counter-clockwise mapping
         if (pig.pos < beltSize) {
-            pig.x = start + pig.pos;        // bottom edge, move right
+            pig.x = start + pig.pos;
             pig.y = start + beltSize;
         } else if (pig.pos < beltSize*2) {
-            pig.x = start + beltSize;      // right edge, move up
+            pig.x = start + beltSize;
             pig.y = start + beltSize - (pig.pos - beltSize);
         } else if (pig.pos < beltSize*3) {
-            pig.x = start + beltSize - (pig.pos - beltSize*2); // top edge, move left
+            pig.x = start + beltSize - (pig.pos - beltSize*2);
             pig.y = start;
         } else {
-            pig.x = start;                 // left edge, move down
+            pig.x = start;
             pig.y = start + (pig.pos - beltSize*3);
         }
 
-        // Shooting logic: check if pig is near edge
-        const gridX = Math.floor((pig.x - OFFSET) / cellSize);
-        const gridY = Math.floor((pig.y - OFFSET) / cellSize);
+        // Shooting logic
+        const gx = Math.floor((pig.x - OFFSET)/cellSize);
+        const gy = Math.floor((pig.y - OFFSET)/cellSize);
         let target = null;
 
         // Horizontal edges
-        if (Math.abs(pig.y - (start + beltSize)) < epsilon) { 
-            // Bottom edge shooting up
-            const row = grid[gridY];
-            target = [...row].reverse().find(c => c.active && c.color === pig.color);
+        if (Math.abs(pig.y - (start + beltSize)) < epsilon) {
+            // Bottom edge shooting UP
+            if (gy >= 0 && gy < GRID_SIZE) {
+                const row = grid[gy];
+                target = [...row].reverse().find(c => c.active && c.color === pig.color);
+            }
         } else if (Math.abs(pig.y - start) < epsilon) {
-            // Top edge shooting down
-            const row = grid[gridY];
-            target = row.find(c => c.active && c.color === pig.color);
+            // Top edge shooting DOWN
+            if (gy >= 0 && gy < GRID_SIZE) {
+                const row = grid[gy];
+                target = row.find(c => c.active && c.color === pig.color);
+            }
         }
 
         // Vertical edges
         if (Math.abs(pig.x - start) < epsilon) {
-            // Left edge shooting right
-            const col = grid.map(r => r[gridX]);
-            target = col.find(c => c.active && c.color === pig.color);
+            // Left edge shooting RIGHT
+            if (gx >= 0 && gx < GRID_SIZE) {
+                const col = grid.map(r => r[gx]);
+                target = col.find(c => c.active && c.color === pig.color);
+            }
         } else if (Math.abs(pig.x - (start + beltSize)) < epsilon) {
-            // Right edge shooting left
-            const col = grid.map(r => r[gridX]);
-            target = [...col].reverse().find(c => c.active && c.color === pig.color);
+            // Right edge shooting LEFT
+            if (gx >= 0 && gx < GRID_SIZE) {
+                const col = grid.map(r => r[gx]);
+                target = [...col].reverse().find(c => c.active && c.color === pig.color);
+            }
         }
 
-        if (target) fire(pig, target, gridX, gridY);
+        // Fire only if a target was found
+        if (target) fire(pig, target);
     });
 
+    // Update bullets
     projectiles = projectiles.filter(p => (p.life -= 0.05) > 0);
-}
-    
+}    
 function fire(pig, target, gx, gy) {
     // To find the actual target object index for ammo subtraction
     // we need its real coordinates because .find() returned a reference
