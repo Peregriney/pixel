@@ -149,23 +149,28 @@ function deployPig(idx) {
         const gridY = Math.floor((pig.y - OFFSET) / cellSize);
 
         let target = null;
+        const epsilon = pig.speed; // small tolerance
+        
         // Horizontal segments
-        if (pig.y === start || pig.y === start + beltSize) {
-            if (gridY >= 0 && gridY < GRID_SIZE) {
-                const row = grid[gridY];
-                target = (pig.y === start) ? row.find(c => c.active && c.color === pig.color)
-                                           : [...row].reverse().find(c => c.active && c.color === pig.color);
-            }
-        }
-        // Vertical segments
-        if (pig.x === start || pig.x === start + beltSize) {
+        if (Math.abs(pig.y - start) < epsilon || Math.abs(pig.y - (start + beltSize)) < epsilon) {
             if (gridX >= 0 && gridX < GRID_SIZE) {
-                const col = grid.map(r => r[gridX]);
-                target = (pig.x === start) ? col.find(c => c.active && c.color === pig.color)
-                                           : [...col].reverse().find(c => c.active && c.color === pig.color);
+                const row = grid[Math.floor((pig.y - OFFSET) / cellSize)];
+                target = (pig.y < start + beltSize/2) 
+                    ? row.find(c => c.active && c.color === pig.color) // top edge shooting down
+                    : [...row].reverse().find(c => c.active && c.color === pig.color); // bottom edge shooting up
             }
         }
-
+        
+        // Vertical segments
+        if (Math.abs(pig.x - start) < epsilon || Math.abs(pig.x - (start + beltSize)) < epsilon) {
+            if (gridY >= 0 && gridY < GRID_SIZE) {
+                const col = grid.map(r => r[Math.floor((pig.x - OFFSET) / cellSize)]);
+                target = (pig.x < start + beltSize/2) 
+                    ? col.find(c => c.active && c.color === pig.color) // left edge shooting right
+                    : [...col].reverse().find(c => c.active && c.color === pig.color); // right edge shooting left
+            }
+        }
+        
         if (target) fire(pig, target, gridX, gridY);
     });
 
