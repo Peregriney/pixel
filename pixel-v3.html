@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Flow: Reveal Edition</title>
+    <style>
+        :root { --bg: #121212; --panel: #1e1e1e; --text: #fff; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+        #game-wrap { display: flex; flex-direction: column; align-items: center; gap: 15px; position: relative; }
+        
+        /* The container for the canvas and background text */
+        #board-container { position: relative; border-radius: 12px; box-shadow: 0 0 30px rgba(0,0,0,0.8); overflow: hidden; }
+
+        /* The birthday message hidden underneath */
+        #reveal-text { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #ffcc00; font-weight: bold; text-transform: uppercase; text-align: center; text-shadow: 0 0 10px #ff595e; user-select: none; z-index: 1; pointer-events: none; }
+
+        /* Canvas sits on top, background transparent so text shows through gaps */
+        canvas { background: transparent; cursor: crosshair; position: relative; z-index: 2; display: block; image-rendering: pixelated; }
+
+        #ui { display: flex; gap: 10px; padding: 15px; background: var(--panel); border-radius: 50px; border: 1px solid #333; z-index: 3; position: relative; }
+        .pig-btn { width: 50px; height: 50px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; border: 2px solid rgba(255,255,255,0.1); position: relative; user-select: none;}
+        .pig-btn:hover { transform: scale(1.1); border-color: #fff; }
+        .pig-btn.active-on-belt { border-color: #fff; box-shadow: 0 0 10px; }
+        .pig-btn.empty { opacity: 0.2; cursor: default; filter: grayscale(1); }
+        .count { font-size: 10px; font-weight: bold; margin-top: -2px; }
+        .instruction { opacity: 0.6; font-size: 0.9rem; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="game-wrap">
+    <div class="instruction">Deploy pigs to clear the image!</div>
+    
+    <div id="board-container">
+        <div id="reveal-text">
+            <div id="text-line-1">HAPPY</div>
+            <div id="text-line-2">BIRTHDAY</div>
+        </div>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="ui"></div>
+</div>
+
+<script>
+const cvs = document.getElementById('canvas');
+const ctx = cvs.getContext('2d');
+const ui = document.getElementById('ui');
+const revealText = document.getElementById('reveal-text');
+
+// Configuration
+const GRID_SIZE = 50; 
+const OFFSET = 40;     // Space for conveyor belt
+let cellSize = 10;     // Size of individual pixels
+const IMG_SOURCE = 'Desktop/pixil-frame-0.png'; // Make sure this file exists!
+
+// Calculate total dimensions
+const internalGridWidth = GRID_SIZE * cellSize;
+const totalWidth = internalGridWidth + (OFFSET * 2);
+cvs.width = totalWidth;
+cvs.height = totalWidth; // Keeping it square
+
+// Size the background text area to match the grid area exactly
+revealText.style.width = internalGridWidth + "px";
+revealText.style.height = internalGridWidth + "px";
+revealText.style.top = OFFSET + "px";
+revealText.style.left = OFFSET + "px";
+// Adjust font size based on cell size
+revealText.style.fontSize = (cellSize * 5) + "px"; 
+revealText.style.lineHeight = (cellSize * 4) + "px";
+
+let grid = [];
+let pigsInQueue = [];
+let activePigs = [];
+let projectiles = [];
+let imgLoaded = false;
+let totalPixelsToClear = 0;
+
+// rgb to hex helper for image processing
+function rgbToHex(r, g, b) {
+    if (r === 0 && g === 0 && b === 0) return null; // Treat pure black as transparent
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+}
+
+// 1. Initialize: Load Image and setup Grid
+function init() {
+    const img = new Image();
+    img.src = IMG_SOURCE;
+    
+    img.onload = function() {
+        imgLoaded = true;
+        
+        // Create temp canvas to read pixel data
+        const tCvs = document.createElement('canvas');
+        const tCtx = tCvs.getContext('2d');
+        tCvs.width = GRID_SIZE; 
+        tCvs.height = GRID_SIZE;
+        
+        // Draw image, stretching/shrinking to fit 50x50
+        tCtx.drawImage(img, 0, 0, GRID_SIZE, GRID_SIZE);
+        
+        const imgData = tCtx.getImageData(0, 0, GRID_SIZE, GRID_SIZE).data;
+        let counts = {};
+        grid = [];
+
+        // Read temp canvas pixel data
+        for (let y = 0; y < GRID_SIZE; y++) {
+            for (let x = 0; x < GRID_SIZE; x++) {
+                const i = (y * GRID_SIZE + x) * 4;
+                const hex = rgbToHex(imgData[i], imgData[i+1], imgData[i+2]);
+                
+                // If the pixel isn't transparent/black, add to game
+                if (hex && imgData[i+3] > 128) { // Only semi-opaque pixels
+                    grid.push({ x, y, color: hex, active: true });
+                    counts[hex] = (counts[hex] || 0) + 1;
+                    totalPixelsToClear++;
+                }
+            }
+        }
+
+        // Generate Pig Queue based on colors found in image
+        pigsInQueue = Object.keys(counts).map(c => ({ 
+            color: c, 
+            total: counts[c], 
+            current: counts[c],
+            isOnBelt: false
+        }));
+        
+        renderUI();
+        requestAnimationFrame(loop);
+    };
+
+    img.onerror = function() {
+        alert(`Failed to load image: ${IMG_SOURCE}. \nMake sure the file is in the same folder and you are running a local server.`);
+    };
+}
+
+function renderUI() {
+    ui.innerHTML = '';
+    pigsInQueue.forEach((p, i) => {
+        const btn = document.createElement('div');
+        let stateClass = '';
+        if(p.current <= 0) stateClass = 'empty';
+        if(p.isOnBelt) stateClass = 'active-on-belt';
+        
+        btn.className = `pig-btn ${stateClass}`;
+        btn.style.backgroundColor = p.color;
+        if(p.isOnBelt) btn.style.boxShadow = `0 0 15px ${p.color}`;
+        btn.innerHTML = `<span>🐷</span><span class="count">${p.current}</span>`;
+        btn.onclick = () => { if(p.current > 0 && !p.isOnBelt) deployPig(i); };
+        ui.appendChild(btn);
+    });
+}
+
+function deployPig(index) {
+    const p = pigsInQueue[index];
+    p.isOnBelt = true;
+    activePigs.push({
+        color: p.color,
+        pos: 0, // start top-left of belt
+        speed: 2.5,
+        ammo: p.total,
+        uID: index, // reference back to queue
+        x: 0, y: 0
+    });
+    renderUI();
+}
+
+// 2. Game Loop - Logic Update
+function update() {
+    if(!imgLoaded) return;
+
+    // Conveyor Belt logic
+    const pathPadding = 10; // offset from canvas edge
+    const beltW = cvs.width - pathPadding * 2;
+    const beltH = cvs.height - pathPadding * 2;
+    const perimeter = (beltW + beltH) * 2;
+
+    activePigs.forEach((pig, pIdx) => {
+        pig.pos = (pig.pos + pig.speed) % perimeter;
+
+        // Map perimeter position to X, Y
+        if (pig.pos < beltW) { pig.x = pig.pos + pathPadding; pig.y = pathPadding; } // Top
+        else if (pig.pos < beltW + beltH) { pig.x = cvs.width - pathPadding; pig.y = (pig.pos - beltW) + pathPadding; } // Right
+        else if (pig.pos < beltW * 2 + beltH) { pig.x = cvs.width - (pig.pos - (beltW + beltH)) - pathPadding; pig.y = cvs.height - pathPadding; } // Bottom
+        else { pig.x = pathPadding; pig.y = cvs.height - (pig.pos - (beltW * 2 + beltH)) - pathPadding; } // Left
+
+        // Shooting Logic (REVERSE): Shoot ACTIVE pixels to deactivate them
+        grid.forEach(cell => {
+            if (cell.active && cell.color === pig.color) {
+                const cellCenterX = cell.x * cellSize + OFFSET + cellSize/2;
+                const cellCenterY = cell.y * cellSize + OFFSET + cellSize/2;
+                
+                // Alignment check
+                const alignedX = Math.abs(pig.x - cellCenterX) < pig.speed;
+                const alignedY = Math.abs(pig.y - cellCenterY) < pig.speed;
+
+                if (alignedX || alignedY) {
+                    projectiles.push({
+                        x: pig.x, y: pig.y,
+                        tx: cellCenterX, ty: cellCenterY,
+                        color: pig.color,
+                        life: 1.0 // for fade effect
+                    });
+                    cell.active = false; // "Clear" pixel
+                    pig.ammo--;
+                    pigsInQueue[pig.uID].current--;
+                    totalPixelsToClear--;
+                    renderUI(); // Update numbers
+                }
+            }
+        });
+    });
+
+    // Fade projectiles
+    projectiles = projectiles.filter(p => {
+        p.life -= 0.1;
+        return p.life > 0;
+    });
+
+    // Remove finished pigs
+    const finishedPigs = activePigs.filter(p => p.ammo <= 0);
+    finishedPigs.forEach(fp => {
+        // Mark queue item as done so it can't be redeployed
+        pigsInQueue[fp.uID].isOnBelt = false; 
+    });
+    activePigs = activePigs.filter(p => p.ammo > 0);
+
+    // Win condition check
+    if (imgLoaded && totalPixelsToClear <= 0 && activePigs.length === 0) {
+        totalPixelsToClear = 1; // prevent multiple alerts
+        setTimeout(() => alert("🎉 All clear! Happy Birthday!"), 500);
+    }
+}
+
+// 3. Game Loop - Rendering
+function draw() {
+    // Clear canvas completely to allow HTML text underneath to show
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+    if(!imgLoaded) return;
+
+    // Draw active Grid pixels (The Image)
+    grid.forEach(c => {
+        if(!c.active) return; // Don't draw "shot" pixels
+
+        ctx.fillStyle = c.color;
+        const pad = 1; // cell padding
+        const r = 2;   // rounding radius
+        const x = c.x * cellSize + OFFSET + pad;
+        const y = c.y * cellSize + OFFSET + pad;
+        const s = cellSize - pad * 2;
+        
+        ctx.beginPath();
+        // Modern rounded rect
+        if (ctx.roundRect) {
+            ctx.roundRect(x, y, s, s, r);
+        } else {
+            // fallback if roundRect isn't supported
+            ctx.rect(x, y, s, s);
+        }
+        ctx.fill();
+    });
+
+    // Draw Active Pigs on belt
+    activePigs.forEach(p => {
+        // Draw glow
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = p.color;
+        ctx.fillStyle = p.color;
+        
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw icon
+        ctx.shadowBlur = 0; // reset
+        ctx.fillStyle = "white";
+        ctx.font = "10px Arial";
+        ctx.fillText("🐷", p.x - 6, p.y + 4);
+    });
+
+    // Draw Projectile Beams
+    projectiles.forEach(p => {
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = p.life; // fading
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.tx, p.ty);
+        ctx.stroke();
+        ctx.globalAlpha = 1; // reset
+    });
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+init();
+
+</script>
+</body>
+</html>
