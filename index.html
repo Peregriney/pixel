@@ -20,7 +20,6 @@
     </style>
 </head>
 <body>
-
 <div id="game-wrap">
     <div id="board-container">
         <div id="reveal-text">
@@ -30,18 +29,15 @@
     </div>
     <div id="ui"></div>
 </div>
-
 <script>
 const cvs = document.getElementById('canvas');
 const ctx = cvs.getContext('2d');
 const ui = document.getElementById('ui');
-
 const GRID_SIZE = 50;
 const OFFSET = 50; 
 let cellSize = 10;
 cvs.width = cvs.height = (GRID_SIZE * cellSize) + (OFFSET * 2);
-
-let grid = []; // 2D array for easier layer calculations
+let grid = []; 
 let pigsInQueue = [];
 let activePigs = [];
 let projectiles = [];
@@ -56,23 +52,21 @@ function init() {
         tCvs.width = tCvs.height = GRID_SIZE;
         tCtx.drawImage(img, 0, 0, GRID_SIZE, GRID_SIZE);
         const data = tCtx.getImageData(0, 0, GRID_SIZE, GRID_SIZE).data;
-
         let counts = {};
-        // Initialize 2D Grid
+        
         for(let y=0; y<GRID_SIZE; y++) {
             grid[y] = [];
             for(let x=0; x<GRID_SIZE; x++) {
                 const i = (y * GRID_SIZE + x) * 4;
                 let r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
                 
-                // If black or transparent, force it to be a "Black Target"
                 let hex = (a < 10 || (r<20 && g<20 && b<20)) ? "#000000" : rgbToHex(r,g,b);
                 
-                grid[y][x] = { color: hex, active: true };
+                // ADDED: gx and gy properties directly to the object so we can easily find them later
+                grid[y][x] = { color: hex, active: true, gx: x, gy: y }; 
                 counts[hex] = (counts[hex] || 0) + 1;
             }
         }
-
         pigsInQueue = Object.keys(counts).map(c => ({ color: c, current: counts[c], onBelt: false }));
         renderUI();
         requestAnimationFrame(loop);
@@ -111,13 +105,12 @@ function deployPig(idx) {
 }
     
 function update() {
-    const beltSize = GRID_SIZE * cellSize + 20; // Slight padding
+    const beltSize = GRID_SIZE * cellSize + 20; 
     const start = OFFSET - 10;
     const perimeter = beltSize * 4;
     const epsilon = 6;
-
+    
     activePigs.forEach((pig, pIdx) => {
-        // Move pig along counter-clockwise track
         pig.pos += pig.speed;
         if (pig.pos >= perimeter) {
             pigsInQueue[pig.uID].onBelt = false;
@@ -125,7 +118,7 @@ function update() {
             renderUI();
             return;
         }
-
+        
         // Counter-clockwise mapping
         if (pig.pos < beltSize) {
             pig.x = start + pig.pos;
@@ -140,73 +133,72 @@ function update() {
             pig.x = start;
             pig.y = start + (pig.pos - beltSize*3);
         }
-
-        // Shooting logic
+        
         const gx = Math.floor((pig.x - OFFSET)/cellSize);
         const gy = Math.floor((pig.y - OFFSET)/cellSize);
         let target = null;
 
-        // Horizontal edges
+        // FIXED: Bottom/Top edges check Columns (gx), Left/Right edges check Rows (gy)
+        // Also checks line of sight: it must hit the FIRST active pixel it sees, even if it's the wrong color (acts as a block)
         if (Math.abs(pig.y - (start + beltSize)) < epsilon) {
-            // Bottom edge shooting UP
-            if (gy >= 0 && gy < GRID_SIZE) {
-                const row = grid[gy];
-                target = [...row].reverse().find(c => c.active && c.color === pig.color);
+            // Bottom edge shooting UP (along column gx)
+            if (gx >= 0 && gx < GRID_SIZE) {
+                const col = grid.map(r => r[gx]);
+                let firstVisible = [...col].reverse().find(c => c.active);
+                if (firstVisible && firstVisible.color === pig.color) target = firstVisible;
             }
         } else if (Math.abs(pig.y - start) < epsilon) {
-            // Top edge shooting DOWN
+            // Top edge shooting DOWN (along column gx)
+            if (gx >= 0 && gx < GRID_SIZE) {
+                const col = grid.map(r => r[gx]);
+                let firstVisible = col.find(c => c.active);
+                if (firstVisible && firstVisible.color === pig.color) target = firstVisible;
+            }
+        } else if (Math.abs(pig.x - start) < epsilon) {
+            // Left edge shooting RIGHT (along row gy)
             if (gy >= 0 && gy < GRID_SIZE) {
                 const row = grid[gy];
-                target = row.find(c => c.active && c.color === pig.color);
-            }
-        }
-
-        // Vertical edges
-        if (Math.abs(pig.x - start) < epsilon) {
-            // Left edge shooting RIGHT
-            if (gx >= 0 && gx < GRID_SIZE) {
-                const col = grid.map(r => r[gx]);
-                target = col.find(c => c.active && c.color === pig.color);
+                let firstVisible = row.find(c => c.active);
+                if (firstVisible && firstVisible.color === pig.color) target = firstVisible;
             }
         } else if (Math.abs(pig.x - (start + beltSize)) < epsilon) {
-            // Right edge shooting LEFT
-            if (gx >= 0 && gx < GRID_SIZE) {
-                const col = grid.map(r => r[gx]);
-                target = [...col].reverse().find(c => c.active && c.color === pig.color);
+            // Right edge shooting LEFT (along row gy)
+            if (gy >= 0 && gy < GRID_SIZE) {
+                const row = grid[gy];
+                let firstVisible = [...row].reverse().find(c => c.active);
+                if (firstVisible && firstVisible.color === pig.color) target = firstVisible;
             }
         }
-
-        // Fire only if a target was found
+        
         if (target) fire(pig, target);
     });
-
-    // Update bullets
+    
     projectiles = projectiles.filter(p => (p.life -= 0.05) > 0);
 }    
-function fire(pig, target, gx, gy) {
-    // To find the actual target object index for ammo subtraction
-    // we need its real coordinates because .find() returned a reference
+
+function fire(pig, target) {
+    // FIXED: Use target.gx and target.gy directly
     projectiles.push({
-        x: pig.x, y: pig.y,
-        tx: OFFSET + (grid[0].indexOf(target) * cellSize) + cellSize/2, // Rough index find
-        ty: OFFSET + (grid.findIndex(r => r.includes(target)) * cellSize) + cellSize/2,
-        color: pig.color, life: 1
+        x: pig.x, 
+        y: pig.y,
+        tx: OFFSET + (target.gx * cellSize) + cellSize/2, 
+        ty: OFFSET + (target.gy * cellSize) + cellSize/2,
+        color: pig.color, 
+        life: 1
     });
     target.active = false;
     pigsInQueue[pig.uID].current--;
 }
 
-
 function draw() {
     const start = OFFSET - 10;
     const beltSize = GRID_SIZE * cellSize + 20;
-
     ctx.clearRect(0, 0, cvs.width, cvs.height);
-
+    
     // Board background
     ctx.fillStyle = "#2f43a3";
     ctx.fillRect(0,0,cvs.width,cvs.height);
-
+    
     // Conveyor track
     const grad = ctx.createLinearGradient(start, start, start+beltSize, start+beltSize);
     grad.addColorStop(0,"#3f5ecf");
@@ -215,13 +207,13 @@ function draw() {
     ctx.fillStyle = grad;
     roundRect(ctx,start,start,beltSize,beltSize,8);
     ctx.fill();
-
+    
     // Track border
     ctx.strokeStyle = "#ffffffaa";
     ctx.lineWidth = 2;
     roundRect(ctx,start,start,beltSize,beltSize,8);
     ctx.stroke();
-
+    
     // Draw grid pixels
     for(let y=0;y<GRID_SIZE;y++){
         for(let x=0;x<GRID_SIZE;x++){
@@ -233,7 +225,7 @@ function draw() {
             ctx.fill();
         }
     }
-
+    
     // Draw pigs
     activePigs.forEach(p => {
         ctx.fillStyle = p.color;
@@ -243,23 +235,24 @@ function draw() {
         ctx.arc(p.x,p.y,10,0,Math.PI*2);
         ctx.fill();
         ctx.shadowBlur = 0;
-
         ctx.fillStyle = "#fff";
         ctx.font="12px Arial";
         ctx.fillText("🐷",p.x-7,p.y+5);
     });
-
-    // Draw bullets
+    
+    // Draw bullets (FIXED to render as beams fading out)
     projectiles.forEach(p => {
-        ctx.fillStyle = p.color;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 3;
         ctx.globalAlpha = p.life;
         ctx.beginPath();
-        ctx.arc(p.x,p.y,3,0,Math.PI*2);
-        ctx.fill();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.tx, p.ty);
+        ctx.stroke();
         ctx.globalAlpha = 1;
     });
 }
-// Helper for rounded rectangles
+
 function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x+r, y);
