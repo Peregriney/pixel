@@ -8,8 +8,11 @@
         :root { --bg: #2440d1; --panel: #1a1a1a; --text: #eee; }
         body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
         #game-wrap { display: flex; flex-direction: column; align-items: center; gap: 15px; position: relative; }
-        #board-container { position: relative; border-radius: 8px; background:  #2f43a3; box-shadow: 0 0 40px rgba(0,0,0,0.9); }
-        #reveal-text { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #ff3366; font-weight: 900; text-align: center; z-index: 1; pointer-events: none; width: 100%; height: 100%; }
+        #board-container { position: relative; border-radius: 8px; background: #2f43a3; box-shadow: 0 0 40px rgba(0,0,0,0.9); }
+        
+        /* The reveal text now sits safely underneath the transparent canvas */
+        #reveal-text { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #821a34; font-weight: 900; text-align: center; z-index: 1; pointer-events: none; width: 100%; height: 100%; }
+        
         canvas { background: transparent; cursor: crosshair; position: relative; z-index: 2; image-rendering: pixelated; }
         #ui { display: flex; gap: 12px; padding: 15px; background: var(--panel); border-radius: 15px; border: 1px solid #333; z-index: 3; }
         .pig-btn { width: 55px; height: 55px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; border: 2px solid #333; position: relative; }
@@ -62,7 +65,6 @@ function init() {
                 
                 let hex = (a < 10 || (r<20 && g<20 && b<20)) ? "#000000" : rgbToHex(r,g,b);
                 
-                // ADDED: gx and gy properties directly to the object so we can easily find them later
                 grid[y][x] = { color: hex, active: true, gx: x, gy: y }; 
                 counts[hex] = (counts[hex] || 0) + 1;
             }
@@ -119,7 +121,6 @@ function update() {
             return;
         }
         
-        // Counter-clockwise mapping
         if (pig.pos < beltSize) {
             pig.x = start + pig.pos;
             pig.y = start + beltSize;
@@ -138,31 +139,25 @@ function update() {
         const gy = Math.floor((pig.y - OFFSET)/cellSize);
         let target = null;
 
-        // FIXED: Bottom/Top edges check Columns (gx), Left/Right edges check Rows (gy)
-        // Also checks line of sight: it must hit the FIRST active pixel it sees, even if it's the wrong color (acts as a block)
         if (Math.abs(pig.y - (start + beltSize)) < epsilon) {
-            // Bottom edge shooting UP (along column gx)
             if (gx >= 0 && gx < GRID_SIZE) {
                 const col = grid.map(r => r[gx]);
                 let firstVisible = [...col].reverse().find(c => c.active);
                 if (firstVisible && firstVisible.color === pig.color) target = firstVisible;
             }
         } else if (Math.abs(pig.y - start) < epsilon) {
-            // Top edge shooting DOWN (along column gx)
             if (gx >= 0 && gx < GRID_SIZE) {
                 const col = grid.map(r => r[gx]);
                 let firstVisible = col.find(c => c.active);
                 if (firstVisible && firstVisible.color === pig.color) target = firstVisible;
             }
         } else if (Math.abs(pig.x - start) < epsilon) {
-            // Left edge shooting RIGHT (along row gy)
             if (gy >= 0 && gy < GRID_SIZE) {
                 const row = grid[gy];
                 let firstVisible = row.find(c => c.active);
                 if (firstVisible && firstVisible.color === pig.color) target = firstVisible;
             }
         } else if (Math.abs(pig.x - (start + beltSize)) < epsilon) {
-            // Right edge shooting LEFT (along row gy)
             if (gy >= 0 && gy < GRID_SIZE) {
                 const row = grid[gy];
                 let firstVisible = [...row].reverse().find(c => c.active);
@@ -177,7 +172,6 @@ function update() {
 }    
 
 function fire(pig, target) {
-    // FIXED: Use target.gx and target.gy directly
     projectiles.push({
         x: pig.x, 
         y: pig.y,
@@ -193,25 +187,26 @@ function fire(pig, target) {
 function draw() {
     const start = OFFSET - 10;
     const beltSize = GRID_SIZE * cellSize + 20;
+    
+    // Clear the canvas completely so CSS background and text show through empty areas
     ctx.clearRect(0, 0, cvs.width, cvs.height);
     
-    // Board background
-    ctx.fillStyle = "#2f43a3";
-    ctx.fillRect(0,0,cvs.width,cvs.height);
-    
-    // Conveyor track
+    // Conveyor track (Drawn as a thick hollow line instead of a solid fill)
     const grad = ctx.createLinearGradient(start, start, start+beltSize, start+beltSize);
     grad.addColorStop(0,"#3f5ecf");
     grad.addColorStop(0.5,"#2f43a3");
     grad.addColorStop(1,"#1f2a70");
-    ctx.fillStyle = grad;
-    roundRect(ctx,start,start,beltSize,beltSize,8);
-    ctx.fill();
     
-    // Track border
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 20; // Matches the width of the belt
+    // The stroke draws from the center of the line, so we offset by 10
+    roundRect(ctx, start + 10, start + 10, beltSize - 20, beltSize - 20, 8);
+    ctx.stroke();
+    
+    // Track outer border
     ctx.strokeStyle = "#ffffffaa";
     ctx.lineWidth = 2;
-    roundRect(ctx,start,start,beltSize,beltSize,8);
+    roundRect(ctx, start, start, beltSize, beltSize, 8);
     ctx.stroke();
     
     // Draw grid pixels
@@ -240,7 +235,7 @@ function draw() {
         ctx.fillText("🐷",p.x-7,p.y+5);
     });
     
-    // Draw bullets (FIXED to render as beams fading out)
+    // Draw bullets
     projectiles.forEach(p => {
         ctx.strokeStyle = p.color;
         ctx.lineWidth = 3;
