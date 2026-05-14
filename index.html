@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pixel Flow: Layered Reveal</title>
     <style>
-        :root { --bg: #0a0a0a; --panel: #1a1a1a; --text: #eee; }
+        :root { --bg: #2440d1; --panel: #1a1a1a; --text: #eee; }
         body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
         #game-wrap { display: flex; flex-direction: column; align-items: center; gap: 15px; position: relative; }
         #board-container { position: relative; border-radius: 8px; background: #000; box-shadow: 0 0 40px rgba(0,0,0,0.9); }
@@ -128,11 +128,23 @@ function update() {
         }
 
         // 2. Map perimeter to X/Y
-        if (pig.pos < beltSize) { pig.x = start + pig.pos; pig.y = start; }
-        else if (pig.pos < beltSize * 2) { pig.x = start + beltSize; pig.y = start + (pig.pos - beltSize); }
-        else if (pig.pos < beltSize * 3) { pig.x = start + beltSize - (pig.pos - beltSize * 2); pig.y = start + beltSize; }
-        else { pig.x = start; pig.y = start + beltSize - (pig.pos - beltSize * 3); }
-
+        if (pig.pos < beltSize) { 
+            // Left edge, moving up
+            pig.x = start; 
+            pig.y = start + beltSize - pig.pos; 
+        } else if (pig.pos < beltSize * 2) { 
+            // Top edge, moving right
+            pig.x = start + (pig.pos - beltSize); 
+            pig.y = start; 
+        } else if (pig.pos < beltSize * 3) { 
+            // Right edge, moving down
+            pig.x = start + beltSize; 
+            pig.y = start + (pig.pos - beltSize * 2); 
+        } else { 
+            // Bottom edge, moving left
+            pig.x = start + beltSize - (pig.pos - beltSize * 3); 
+            pig.y = start + beltSize; 
+        }
         // 3. Shooting Logic: One layer only (Line of Sight)
         // Check alignment with grid rows/cols
         const gridX = Math.floor((pig.x - OFFSET) / cellSize);
@@ -191,9 +203,15 @@ function draw() {
         for(let x=0; x<GRID_SIZE; x++) {
             const c = grid[y][x];
             if(!c.active) continue;
-            ctx.fillStyle = c.color;
+            ctx.fillStyle = c.color; // or 'rgba(r,g,b,1)' to enforce full opacity
             ctx.beginPath();
-            ctx.roundRect(OFFSET + x*cellSize + 1, OFFSET + y*cellSize + 1, cellSize-2, cellSize-2, 2);
+            ctx.roundRect(
+                OFFSET + x*cellSize,       // remove +1
+                OFFSET + y*cellSize,       // remove +1
+                cellSize,                  // use full size
+                cellSize,                  // full height
+                2                          // subtle rounding
+            );
             ctx.fill();
         }
     }
