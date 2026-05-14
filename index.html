@@ -217,71 +217,98 @@ function fire(pig, target, gx, gy) {
 function draw() {
     ctx.clearRect(0, 0, cvs.width, cvs.height);
 
-    
-    
-    // Draw Grid
-    for(let y=0; y<GRID_SIZE; y++) {
-        for(let x=0; x<GRID_SIZE; x++) {
+    const start = OFFSET - 10;
+    const beltSize = GRID_SIZE * cellSize + 20;
+
+    // --- Draw board background ---
+    ctx.fillStyle = "#2f43a3";
+    ctx.fillRect(0, 0, cvs.width, cvs.height);
+
+    // --- Draw raised conveyor track ---
+    const grad = ctx.createLinearGradient(start, start, start + beltSize, start + beltSize);
+    grad.addColorStop(0, "#3f5ecf"); // highlight
+    grad.addColorStop(0.5, "#2f43a3"); // main track
+    grad.addColorStop(1, "#1f2a70"); // shadow
+    ctx.fillStyle = grad;
+
+    roundRect(ctx, start, start, beltSize, beltSize, 8);
+    ctx.fill();
+
+    // Track border
+    ctx.strokeStyle = "#ffffffaa"; // semi-transparent white
+    ctx.lineWidth = 2;
+    roundRect(ctx, start, start, beltSize, beltSize, 8);
+    ctx.stroke();
+
+    // --- Draw Grid Pixels ---
+    for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
             const c = grid[y][x];
-            if(!c.active) continue;
-            ctx.fillStyle = c.color; // or 'rgba(r,g,b,1)' to enforce full opacity
+            if (!c.active) continue;
+            ctx.fillStyle = c.color;
             ctx.beginPath();
             ctx.roundRect(
-                OFFSET + x*cellSize,       // remove +1
-                OFFSET + y*cellSize,       // remove +1
-                cellSize,                  // use full size
-                cellSize,                  // full height
-                2                          // subtle rounding
+                OFFSET + x * cellSize,
+                OFFSET + y * cellSize,
+                cellSize,
+                cellSize,
+                2
             );
             ctx.fill();
         }
     }
 
-    // Draw Pigs
+    // --- Draw Pigs ---
     activePigs.forEach(p => {
         ctx.fillStyle = p.color;
         ctx.shadowBlur = 6;
         ctx.shadowColor = p.color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
+        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
-    
+
         ctx.fillStyle = "#fff";
         ctx.font = "12px Arial";
-        ctx.fillText("🐷", p.x-7, p.y+5);
+        ctx.fillText("🐷", p.x - 7, p.y + 5);
     });
 
-    // Draw Beams
+    // --- Draw Bullets ---
     projectiles.forEach(p => {
-        // Move bullet towards target
         const dx = p.tx - p.x;
         const dy = p.ty - p.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        const speed = 10; // bullet speed
-        if(dist > speed) {
-            p.x += (dx/dist) * speed;
-            p.y += (dy/dist) * speed;
+        const speed = 10;
+        if (dist > speed) {
+            p.x += (dx / dist) * speed;
+            p.y += (dy / dist) * speed;
         } else {
             p.x = p.tx;
             p.y = p.ty;
         }
-    
-        // Draw bullet
+
         ctx.fillStyle = p.color;
         ctx.globalAlpha = p.life;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI*2); // small bullet
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1;
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = p.color;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-    
-        // Fade out
-        p.life -= 0.05;
     });
+}
+
+// --- Rounded rectangle helper ---
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
 }
 
 function loop() { update(); draw(); requestAnimationFrame(loop); }
