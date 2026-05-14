@@ -215,51 +215,46 @@ function fire(pig, target, gx, gy) {
 }
 
 function draw() {
+    // 1. Clear canvas
     ctx.clearRect(0, 0, cvs.width, cvs.height);
 
     const start = OFFSET - 10;
     const beltSize = GRID_SIZE * cellSize + 20;
 
-    // --- Draw board background ---
+    // 2. Draw board background
     ctx.fillStyle = "#2f43a3";
     ctx.fillRect(0, 0, cvs.width, cvs.height);
 
-    // --- Draw raised conveyor track ---
+    // 3. Draw raised conveyor track
     const grad = ctx.createLinearGradient(start, start, start + beltSize, start + beltSize);
-    grad.addColorStop(0, "#3f5ecf"); // highlight
-    grad.addColorStop(0.5, "#2f43a3"); // main track
-    grad.addColorStop(1, "#1f2a70"); // shadow
+    grad.addColorStop(0, "#3f5ecf");
+    grad.addColorStop(0.5, "#2f43a3");
+    grad.addColorStop(1, "#1f2a70");
     ctx.fillStyle = grad;
-
     roundRect(ctx, start, start, beltSize, beltSize, 8);
     ctx.fill();
 
     // Track border
-    ctx.strokeStyle = "#ffffffaa"; // semi-transparent white
+    ctx.strokeStyle = "#ffffffaa";
     ctx.lineWidth = 2;
     roundRect(ctx, start, start, beltSize, beltSize, 8);
     ctx.stroke();
 
-    // --- Draw Grid Pixels ---
+    // 4. Draw grid pixels
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
             const c = grid[y][x];
             if (!c.active) continue;
             ctx.fillStyle = c.color;
             ctx.beginPath();
-            ctx.roundRect(
-                OFFSET + x * cellSize,
-                OFFSET + y * cellSize,
-                cellSize,
-                cellSize,
-                2
-            );
+            ctx.roundRect(OFFSET + x * cellSize, OFFSET + y * cellSize, cellSize, cellSize, 2);
             ctx.fill();
         }
     }
 
-    // --- Draw Pigs ---
+    // 5. Draw pigs on top
     activePigs.forEach(p => {
+        if (p.x === undefined || p.y === undefined) return;
         ctx.fillStyle = p.color;
         ctx.shadowBlur = 6;
         ctx.shadowColor = p.color;
@@ -273,13 +268,13 @@ function draw() {
         ctx.fillText("🐷", p.x - 7, p.y + 5);
     });
 
-    // --- Draw Bullets ---
+    // 6. Draw bullets
     projectiles.forEach(p => {
         const dx = p.tx - p.x;
         const dy = p.ty - p.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
         const speed = 10;
-        if (dist > speed) {
+        if(dist > speed){
             p.x += (dx / dist) * speed;
             p.y += (dy / dist) * speed;
         } else {
@@ -296,18 +291,18 @@ function draw() {
     });
 }
 
-// --- Rounded rectangle helper ---
+// Helper for rounded rectangles
 function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.moveTo(x+r, y);
+    ctx.lineTo(x+w-r, y);
+    ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r);
+    ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h);
+    ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r);
+    ctx.quadraticCurveTo(x, y, x+r, y);
     ctx.closePath();
 }
 
