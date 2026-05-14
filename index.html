@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pixel Flow: Layered Reveal</title>
+    <title>Piggy Flow: Level 05-19</title>
     <style>
         :root { --bg: #2440d1; --panel: #1a1a1a; --text: #eee; }
         body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
@@ -110,14 +110,14 @@ function deployPig(idx) {
     renderUI();
 }
     function update() {
+    const beltSize = GRID_SIZE * cellSize + 20; // Slight padding from grid
     const start = OFFSET - 10;
-    const beltSize = GRID_SIZE * cellSize + 20;
     const perimeter = beltSize * 4;
+    const epsilon = 6; // tolerance for edge detection (use pig speed)
 
     activePigs.forEach((pig, pIdx) => {
+        // Move along counter-clockwise track
         pig.pos += pig.speed;
-
-        // Return to queue
         if (pig.pos >= perimeter) {
             pigsInQueue[pig.uID].onBelt = false;
             activePigs.splice(pIdx, 1);
@@ -125,71 +125,52 @@ function deployPig(idx) {
             return;
         }
 
-        // Counter-clockwise path: right → up → left → down
+        // Counter-clockwise: right → up → left → down
         if (pig.pos < beltSize) {
-            // Bottom edge moving right
-            pig.x = start + pig.pos;
+            pig.x = start + pig.pos;        // bottom edge, move right
             pig.y = start + beltSize;
         } else if (pig.pos < beltSize*2) {
-            // Right edge moving up
-            pig.x = start + beltSize;
+            pig.x = start + beltSize;      // right edge, move up
             pig.y = start + beltSize - (pig.pos - beltSize);
         } else if (pig.pos < beltSize*3) {
-            // Top edge moving left
-            pig.x = start + beltSize - (pig.pos - beltSize*2);
+            pig.x = start + beltSize - (pig.pos - beltSize*2); // top edge, move left
             pig.y = start;
         } else {
-            // Left edge moving down
-            pig.x = start;
+            pig.x = start;                 // left edge, move down
             pig.y = start + (pig.pos - beltSize*3);
         }
 
-        // Shooting logic (discrete bullets)
+        // Shooting logic: check if pig is near edge
         const gridX = Math.floor((pig.x - OFFSET) / cellSize);
         const gridY = Math.floor((pig.y - OFFSET) / cellSize);
-
         let target = null;
-        const epsilon = pig.speed; // small tolerance
-        
-        // Horizontal segments
-        if (Math.abs(pig.y - start) < epsilon || Math.abs(pig.y - (start + beltSize)) < epsilon) {
-            if (gridX >= 0 && gridX < GRID_SIZE) {
-                const row = grid[Math.floor((pig.y - OFFSET) / cellSize)];
-                target = (pig.y < start + beltSize/2) 
-                    ? row.find(c => c.active && c.color === pig.color) // top edge shooting down
-                    : [...row].reverse().find(c => c.active && c.color === pig.color); // bottom edge shooting up
-            }
+
+        // Horizontal edges
+        if (Math.abs(pig.y - (start + beltSize)) < epsilon) { 
+            // Bottom edge shooting up
+            const row = grid[gridY];
+            target = [...row].reverse().find(c => c.active && c.color === pig.color);
+        } else if (Math.abs(pig.y - start) < epsilon) {
+            // Top edge shooting down
+            const row = grid[gridY];
+            target = row.find(c => c.active && c.color === pig.color);
         }
-        
-        // Vertical segments
-        if (Math.abs(pig.x - start) < epsilon || Math.abs(pig.x - (start + beltSize)) < epsilon) {
-            if (gridY >= 0 && gridY < GRID_SIZE) {
-                const col = grid.map(r => r[Math.floor((pig.x - OFFSET) / cellSize)]);
-                target = (pig.x < start + beltSize/2) 
-                    ? col.find(c => c.active && c.color === pig.color) // left edge shooting right
-                    : [...col].reverse().find(c => c.active && c.color === pig.color); // right edge shooting left
-            }
+
+        // Vertical edges
+        if (Math.abs(pig.x - start) < epsilon) {
+            // Left edge shooting right
+            const col = grid.map(r => r[gridX]);
+            target = col.find(c => c.active && c.color === pig.color);
+        } else if (Math.abs(pig.x - (start + beltSize)) < epsilon) {
+            // Right edge shooting left
+            const col = grid.map(r => r[gridX]);
+            target = [...col].reverse().find(c => c.active && c.color === pig.color);
         }
-        
+
         if (target) fire(pig, target, gridX, gridY);
     });
 
-    // Move bullets
-    projectiles = projectiles.filter(p => {
-        const dx = p.tx - p.x;
-        const dy = p.ty - p.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        const speed = 10;
-        if(dist > speed){
-            p.x += (dx / dist) * speed;
-            p.y += (dy / dist) * speed;
-        } else {
-            p.x = p.tx;
-            p.y = p.ty;
-        }
-        p.life -= 0.05;
-        return p.life > 0;
-    });
+    projectiles = projectiles.filter(p => (p.life -= 0.05) > 0);
 }
     
 function fire(pig, target, gx, gy) {
