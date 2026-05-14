@@ -109,17 +109,18 @@ function deployPig(idx) {
     });
     renderUI();
 }
-
+    
 function update() {
-    const beltSize = GRID_SIZE * cellSize + 20; // Slight padding from grid
-    const start = OFFSET - 10;
+    const beltSize = GRID_SIZE * cellSize + 20; // perimeter size
+    const start = OFFSET - 10;                 // track offset
     const perimeter = beltSize * 4;
+    const eps = 3; // tolerance for edge detection
 
+    // Move active pigs
     activePigs.forEach((pig, pIdx) => {
-        let oldPos = pig.pos;
         pig.pos += pig.speed;
 
-        // 1. Return to Queue Logic
+        // Return to queue if finished loop
         if (pig.pos >= perimeter) {
             pigsInQueue[pig.uID].onBelt = false;
             activePigs.splice(pIdx, 1);
@@ -127,61 +128,77 @@ function update() {
             return;
         }
 
-        // 2. Map perimeter to X/Y
-    // Counter-clockwise: right → up → left → down
-    if (pig.pos < beltSize) {
-        // Bottom edge, moving right
-        pig.x = start + pig.pos;
-        pig.y = start + beltSize;
-    } else if (pig.pos < beltSize*2) {
-        // Right edge, moving up
-        pig.x = start + beltSize;
-        pig.y = start + beltSize - (pig.pos - beltSize);
-    } else if (pig.pos < beltSize*3) {
-        // Top edge, moving left
-        pig.x = start + beltSize - (pig.pos - beltSize*2);
-        pig.y = start;
-    } else {
-        // Left edge, moving down
-        pig.x = start;
-        pig.y = start + (pig.pos - beltSize*3);
-    }
-        
-        // 3. Shooting Logic: One layer only (Line of Sight)
-        // Check alignment with grid rows/cols
+        // Map counter-clockwise perimeter position to x/y
+        if (pig.pos < beltSize) {
+            // Bottom edge → moving right
+            pig.x = start + pig.pos;
+            pig.y = start + beltSize;
+        } else if (pig.pos < beltSize * 2) {
+            // Right edge → moving up
+            pig.x = start + beltSize;
+            pig.y = start + beltSize - (pig.pos - beltSize);
+        } else if (pig.pos < beltSize * 3) {
+            // Top edge → moving left
+            pig.x = start + beltSize - (pig.pos - beltSize * 2);
+            pig.y = start;
+        } else {
+            // Left edge → moving down
+            pig.x = start;
+            pig.y = start + (pig.pos - beltSize * 3);
+        }
+
+        // Determine grid coordinates
         const gridX = Math.floor((pig.x - OFFSET) / cellSize);
         const gridY = Math.floor((pig.y - OFFSET) / cellSize);
 
-        // Horizontal Shoot (Vertical Belt Segments)
-        if (pig.x === start || pig.x === start + beltSize) {
-            if (gridY >= 0 && gridY < GRID_SIZE) {
-                const row = grid[gridY];
-                // Find first active pixel from the side the pig is on
-                let target = null;
-                if (pig.x === start) { // Left side looking right
-                    target = row.find(c => c.active);
-                } else { // Right side looking left
-                    target = [...row].reverse().find(c => c.active);
-                }
-                if (target && target.active && target.color === pig.color) fire(pig, target, gridX, gridY);
-            }
-        } 
-        // Vertical Shoot (Horizontal Belt Segments)
-        else if (pig.y === start || pig.y === start + beltSize) {
-            if (gridX >= 0 && gridX < GRID_SIZE) {
-                let target = null;
-                const col = grid.map(r => r[gridX]);
-                if (pig.y === start) { // Top looking down
-                    target = col.find(c => c.active);
-                } else { // Bottom looking up
-                    target = [...col].reverse().find(c => c.active);
-                }
-                if (target && target.active && target.color === pig.color) fire(pig, target, gridX, gridY);
-            }
+        // -------- Shooting logic --------
+        let target = null;
+
+        // Horizontal edges (Top/Bottom) → vertical shooting
+        if (Math.abs(pig.y - (start + beltSize)) < eps) {
+            // Bottom edge → shoot up
+            const col = grid.map(r => r[gridX]);
+            target = [...col].reverse().find(c => c.active && c.color === pig.color);
+            if (target) fire(pig, target, gridX, grid.findIndex(r => r.includes(target)));
+        } else if (Math.abs(pig.y - start) < eps) {
+            // Top edge → shoot down
+            const col = grid.map(r => r[gridX]);
+            target = col.find(c => c.active && c.color === pig.color);
+            if (target) fire(pig, target, gridX, grid.findIndex(r => r.includes(target)));
+        }
+
+        // Vertical edges (Left/Right) → horizontal shooting
+        if (Math.abs(pig.x - (start + beltSize)) < eps) {
+            // Right edge → shoot left
+            const row = grid[gridY];
+            target = [...row].reverse().find(c => c.active && c.color === pig.color);
+            if (target) fire(pig, target, row.indexOf(target), gridY);
+        } else if (Math.abs(pig.x - start) < eps) {
+            // Left edge → shoot right
+            const row = grid[gridY];
+            target = row.find(c => c.active && c.color === pig.color);
+            if (target) fire(pig, target, row.indexOf(target), gridY);
         }
     });
 
-    projectiles = projectiles.filter(p => (p.life -= 0.1) > 0);
+    // Update bullets (move and fade)
+    projectiles = projectiles.filter(p => {
+        const dx = p.tx - p.x;
+        const dy = p.ty - p.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const speed = 10; // bullet speed
+
+        if (dist > speed) {
+            p.x += (dx/dist) * speed;
+            p.y += (dy/dist) * speed;
+        } else {
+            p.x = p.tx;
+            p.y = p.ty;
+        }
+
+        p.life -= 0.05;
+        return p.life > 0;
+    });
 }
 
 function fire(pig, target, gx, gy) {
@@ -199,6 +216,8 @@ function fire(pig, target, gx, gy) {
 
 function draw() {
     ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+    
     
     // Draw Grid
     for(let y=0; y<GRID_SIZE; y++) {
@@ -218,43 +237,6 @@ function draw() {
         }
     }
 
-    // Draw raised conveyor track
-    const trackX = start;
-    const trackY = start;
-    const trackSize = beltSize;
-    
-    // Create gradient from top-left to bottom-right
-    const grad = ctx.createLinearGradient(trackX, trackY, trackX + trackSize, trackY + trackSize);
-    grad.addColorStop(0, "#3f5ecf"); // lighter highlight
-    grad.addColorStop(0.5, "#2f43a3"); // main track color
-    grad.addColorStop(1, "#1f2a70"); // darker shadow
-    
-    ctx.fillStyle = grad;
-    
-    // Rounded rectangle function
-    function roundRect(ctx, x, y, w, h, r) {
-        ctx.beginPath();
-        ctx.moveTo(x+r, y);
-        ctx.lineTo(x+w-r, y);
-        ctx.quadraticCurveTo(x+w, y, x+w, y+r);
-        ctx.lineTo(x+w, y+h-r);
-        ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
-        ctx.lineTo(x+r, y+h);
-        ctx.quadraticCurveTo(x, y+h, x, y+h-r);
-        ctx.lineTo(x, y+r);
-        ctx.quadraticCurveTo(x, y, x+r, y);
-        ctx.closePath();
-    }
-    
-    roundRect(ctx, trackX, trackY, trackSize, trackSize, 8);
-    ctx.fill();
-    
-    // Track border
-    ctx.strokeStyle = "#ffffffaa"; // semi-transparent white
-    ctx.lineWidth = 2;
-    roundRect(ctx, trackX, trackY, trackSize, trackSize, 8);
-    ctx.stroke();
-    
     // Draw Pigs
     activePigs.forEach(p => {
         ctx.fillStyle = p.color;
