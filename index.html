@@ -3,301 +3,220 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pixel Flow: Reveal Edition</title>
+    <title>Pixel Flow: Layered Reveal</title>
     <style>
-        :root { --bg: #121212; --panel: #1e1e1e; --text: #fff; }
-        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+        :root { --bg: #0a0a0a; --panel: #1a1a1a; --text: #eee; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
         #game-wrap { display: flex; flex-direction: column; align-items: center; gap: 15px; position: relative; }
-        
-        /* The container for the canvas and background text */
-        #board-container { position: relative; border-radius: 12px; box-shadow: 0 0 30px rgba(0,0,0,0.8); overflow: hidden; }
-
-        /* The birthday message hidden underneath */
-        #reveal-text { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #ffcc00; font-weight: bold; text-transform: uppercase; text-align: center; text-shadow: 0 0 10px #ff595e; user-select: none; z-index: 1; pointer-events: none; }
-
-        /* Canvas sits on top, background transparent so text shows through gaps */
-        canvas { background: transparent; cursor: crosshair; position: relative; z-index: 2; display: block; image-rendering: pixelated; }
-
-        #ui { display: flex; gap: 10px; padding: 15px; background: var(--panel); border-radius: 50px; border: 1px solid #333; z-index: 3; position: relative; }
-        .pig-btn { width: 50px; height: 50px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; border: 2px solid rgba(255,255,255,0.1); position: relative; user-select: none;}
-        .pig-btn:hover { transform: scale(1.1); border-color: #fff; }
-        .pig-btn.active-on-belt { border-color: #fff; box-shadow: 0 0 10px; }
-        .pig-btn.empty { opacity: 0.2; cursor: default; filter: grayscale(1); }
-        .count { font-size: 10px; font-weight: bold; margin-top: -2px; }
-        .instruction { opacity: 0.6; font-size: 0.9rem; margin-bottom: 5px; }
+        #board-container { position: relative; border-radius: 8px; background: #000; box-shadow: 0 0 40px rgba(0,0,0,0.9); }
+        #reveal-text { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #ff3366; font-weight: 900; text-align: center; z-index: 1; pointer-events: none; width: 100%; height: 100%; }
+        canvas { background: transparent; cursor: crosshair; position: relative; z-index: 2; image-rendering: pixelated; }
+        #ui { display: flex; gap: 12px; padding: 15px; background: var(--panel); border-radius: 15px; border: 1px solid #333; z-index: 3; }
+        .pig-btn { width: 55px; height: 55px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; border: 2px solid #333; position: relative; }
+        .pig-btn:hover:not(.on-belt) { transform: translateY(-5px); border-color: #fff; }
+        .pig-btn.on-belt { opacity: 0.5; cursor: wait; border-style: dashed; }
+        .pig-btn.empty { display: none; }
+        .count { font-size: 11px; font-weight: bold; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 4px; margin-top: 2px; }
     </style>
 </head>
 <body>
 
 <div id="game-wrap">
-    <div class="instruction">Deploy pigs to clear the image!</div>
-    
     <div id="board-container">
         <div id="reveal-text">
-            <div id="text-line-1">HAPPY</div>
-            <div id="text-line-2">BIRTHDAY</div>
+            <div style="font-size: 50px; line-height: 45px;">HAPPY<br>BIRTHDAY</div>
         </div>
         <canvas id="canvas"></canvas>
     </div>
-
     <div id="ui"></div>
 </div>
 
 <script>
-<script>
 const cvs = document.getElementById('canvas');
 const ctx = cvs.getContext('2d');
 const ui = document.getElementById('ui');
-const revealText = document.getElementById('reveal-text');
 
-const GRID_SIZE = 50; 
-const OFFSET = 40;
+const GRID_SIZE = 50;
+const OFFSET = 50; 
 let cellSize = 10;
-const IMG_SOURCE = 'pixil-frame-0.png';
+cvs.width = cvs.height = (GRID_SIZE * cellSize) + (OFFSET * 2);
 
-const internalGridWidth = GRID_SIZE * cellSize;
-const totalWidth = internalGridWidth + (OFFSET * 2);
-cvs.width = totalWidth;
-cvs.height = totalWidth;
-
-revealText.style.width = internalGridWidth + "px";
-revealText.style.height = internalGridWidth + "px";
-revealText.style.top = OFFSET + "px";
-revealText.style.left = OFFSET + "px";
-revealText.style.fontSize = (cellSize * 5) + "px"; 
-revealText.style.lineHeight = (cellSize * 4) + "px";
-
-let grid = [];
+let grid = []; // 2D array for easier layer calculations
 let pigsInQueue = [];
 let activePigs = [];
 let projectiles = [];
-let imgLoaded = false;
-let totalPixelsToClear = 0;
+const IMG_SOURCE = 'pixil-frame-0.png';
+
+function init() {
+    const img = new Image();
+    img.src = IMG_SOURCE;
+    img.onload = () => {
+        const tCvs = document.createElement('canvas');
+        const tCtx = tCvs.getContext('2d');
+        tCvs.width = tCvs.height = GRID_SIZE;
+        tCtx.drawImage(img, 0, 0, GRID_SIZE, GRID_SIZE);
+        const data = tCtx.getImageData(0, 0, GRID_SIZE, GRID_SIZE).data;
+
+        let counts = {};
+        // Initialize 2D Grid
+        for(let y=0; y<GRID_SIZE; y++) {
+            grid[y] = [];
+            for(let x=0; x<GRID_SIZE; x++) {
+                const i = (y * GRID_SIZE + x) * 4;
+                let r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+                
+                // If black or transparent, force it to be a "Black Target"
+                let hex = (a < 10 || (r<20 && g<20 && b<20)) ? "#000000" : rgbToHex(r,g,b);
+                
+                grid[y][x] = { color: hex, active: true };
+                counts[hex] = (counts[hex] || 0) + 1;
+            }
+        }
+
+        pigsInQueue = Object.keys(counts).map(c => ({ color: c, current: counts[c], onBelt: false }));
+        renderUI();
+        requestAnimationFrame(loop);
+    };
+}
 
 function rgbToHex(r, g, b) {
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
 }
 
-function init() {
-    const img = new Image();
-    img.src = IMG_SOURCE;
-    
-    img.onload = function() {
-        imgLoaded = true;
-        const tCvs = document.createElement('canvas');
-        const tCtx = tCvs.getContext('2d');
-        tCvs.width = GRID_SIZE; 
-        tCvs.height = GRID_SIZE;
-        tCtx.drawImage(img, 0, 0, GRID_SIZE, GRID_SIZE);
-        
-        const imgData = tCtx.getImageData(0, 0, GRID_SIZE, GRID_SIZE).data;
-        let counts = {};
-        grid = [];
-
-        for (let y = 0; y < GRID_SIZE; y++) {
-            for (let x = 0; x < GRID_SIZE; x++) {
-                const i = (y * GRID_SIZE + x) * 4;
-                const hex = rgbToHex(imgData[i], imgData[i+1], imgData[i+2]);
-                // All pixels including black
-                if(imgData[i+3] > 128) {
-                    grid.push({ x, y, color: hex, active: true });
-                    counts[hex] = (counts[hex] || 0) + 1;
-                    totalPixelsToClear++;
-                }
-            }
-        }
-
-        pigsInQueue = Object.keys(counts).map(c => ({ 
-            color: c, 
-            total: counts[c], 
-            current: counts[c],
-            isOnBelt: false
-        }));
-        
-        renderUI();
-        requestAnimationFrame(loop);
-    };
-
-    img.onerror = function() {
-        alert(`Failed to load image: ${IMG_SOURCE}.`);
-    };
-}
-
 function renderUI() {
     ui.innerHTML = '';
     pigsInQueue.forEach((p, i) => {
+        if (p.current <= 0) return;
         const btn = document.createElement('div');
-        let stateClass = '';
-        if(p.current <= 0) stateClass = 'empty';
-        if(p.isOnBelt) stateClass = 'active-on-belt';
-        
-        btn.className = `pig-btn ${stateClass}`;
+        btn.className = `pig-btn ${p.onBelt ? 'on-belt' : ''}`;
         btn.style.backgroundColor = p.color;
-        if(p.isOnBelt) btn.style.boxShadow = `0 0 15px ${p.color}`;
+        btn.style.color = p.color === "#000000" ? "#fff" : "#000";
         btn.innerHTML = `<span>🐷</span><span class="count">${p.current}</span>`;
-        btn.onclick = () => { if(p.current > 0 && !p.isOnBelt) deployPig(i); };
+        btn.onclick = () => { if(!p.onBelt) deployPig(i); };
         ui.appendChild(btn);
     });
 }
 
-function deployPig(index) {
-    const p = pigsInQueue[index];
-    if (p.current <= 0) return;
-    p.isOnBelt = true;
+function deployPig(idx) {
+    const p = pigsInQueue[idx];
+    p.onBelt = true;
     activePigs.push({
         color: p.color,
-        perimeterPos: 0,        // distance traveled along the perimeter
-        speed: 2.5,
-        ammo: p.current,        // remaining pixels of this color
-        uID: index,             // index back to queue
-        x: OFFSET,              // start bottom-left
-        y: cvs.height - OFFSET,
-        hasShotThisLap: false   // track if pig shot this lap
+        pos: 0, 
+        speed: 4, 
+        uID: idx,
+        x: OFFSET, y: OFFSET
     });
     renderUI();
 }
 
 function update() {
-    if (!imgLoaded) return;
+    const beltSize = GRID_SIZE * cellSize + 20; // Slight padding from grid
+    const start = OFFSET - 10;
+    const perimeter = beltSize * 4;
 
-    const pathPadding = 10;
-    const beltW = cvs.width - pathPadding * 2;
-    const beltH = cvs.height - pathPadding * 2;
-    const perimeter = 2 * (beltW + beltH);
+    activePigs.forEach((pig, pIdx) => {
+        let oldPos = pig.pos;
+        pig.pos += pig.speed;
 
-    activePigs.forEach((pig) => {
-        // Move pig along perimeter
-        pig.perimeterPos += pig.speed;
-        if (pig.perimeterPos >= perimeter) {
-            pig.perimeterPos -= perimeter;
-            pig.hasShotThisLap = false; // Reset shooting for new lap
+        // 1. Return to Queue Logic
+        if (pig.pos >= perimeter) {
+            pigsInQueue[pig.uID].onBelt = false;
+            activePigs.splice(pIdx, 1);
+            renderUI();
+            return;
         }
 
-        // Map perimeterPos to counter-clockwise coordinates
-        if (pig.perimeterPos < beltH) {
-            // Left edge (bottom to top)
-            pig.x = pathPadding;
-            pig.y = cvs.height - pathPadding - pig.perimeterPos;
-        } else if (pig.perimeterPos < beltH + beltW) {
-            // Top edge (left to right)
-            pig.x = pathPadding + (pig.perimeterPos - beltH);
-            pig.y = pathPadding;
-        } else if (pig.perimeterPos < 2 * beltH + beltW) {
-            // Right edge (top to bottom)
-            pig.x = cvs.width - pathPadding;
-            pig.y = pathPadding + (pig.perimeterPos - (beltH + beltW));
-        } else {
-            // Bottom edge (right to left)
-            pig.x = cvs.width - pathPadding - (pig.perimeterPos - (2 * beltH + beltW));
-            pig.y = cvs.height - pathPadding;
-        }
+        // 2. Map perimeter to X/Y
+        if (pig.pos < beltSize) { pig.x = start + pig.pos; pig.y = start; }
+        else if (pig.pos < beltSize * 2) { pig.x = start + beltSize; pig.y = start + (pig.pos - beltSize); }
+        else if (pig.pos < beltSize * 3) { pig.x = start + beltSize - (pig.pos - beltSize * 2); pig.y = start + beltSize; }
+        else { pig.x = start; pig.y = start + beltSize - (pig.pos - beltSize * 3); }
 
-        // Shoot pixels: only once per lap
-        if (!pig.hasShotThisLap && pig.ammo > 0) {
-            // Find all active pixels of pig color
-            const targets = grid.filter(c => c.active && c.color === pig.color);
+        // 3. Shooting Logic: One layer only (Line of Sight)
+        // Check alignment with grid rows/cols
+        const gridX = Math.floor((pig.x - OFFSET) / cellSize);
+        const gridY = Math.floor((pig.y - OFFSET) / cellSize);
 
-            if (targets.length > 0) {
-                // Shoot one "layer": pick all pixels aligned horizontally or vertically
-                const px = pig.x;
-                const py = pig.y;
-                const layer = targets.filter(cell => {
-                    const cellX = cell.x * cellSize + OFFSET + cellSize / 2;
-                    const cellY = cell.y * cellSize + OFFSET + cellSize / 2;
-                    return Math.abs(cellX - px) < pig.speed || Math.abs(cellY - py) < pig.speed;
-                });
-
-                layer.forEach(cell => {
-                    const cellCenterX = cell.x * cellSize + OFFSET + cellSize / 2;
-                    const cellCenterY = cell.y * cellSize + OFFSET + cellSize / 2;
-                    projectiles.push({
-                        x: px, y: py,
-                        tx: cellCenterX, ty: cellCenterY,
-                        color: pig.color,
-                        life: 1.0
-                    });
-                    cell.active = false;
-                    pig.ammo--;
-                    pigsInQueue[pig.uID].current--;
-                    totalPixelsToClear--;
-                });
-
-                pig.hasShotThisLap = true; // Only one layer per lap
-                renderUI();
+        // Horizontal Shoot (Vertical Belt Segments)
+        if (pig.x === start || pig.x === start + beltSize) {
+            if (gridY >= 0 && gridY < GRID_SIZE) {
+                const row = grid[gridY];
+                // Find first active pixel from the side the pig is on
+                let target = null;
+                if (pig.x === start) { // Left side looking right
+                    target = row.find(c => c.active);
+                } else { // Right side looking left
+                    target = [...row].reverse().find(c => c.active);
+                }
+                if (target && target.active && target.color === pig.color) fire(pig, target, gridX, gridY);
+            }
+        } 
+        // Vertical Shoot (Horizontal Belt Segments)
+        else if (pig.y === start || pig.y === start + beltSize) {
+            if (gridX >= 0 && gridX < GRID_SIZE) {
+                let target = null;
+                const col = grid.map(r => r[gridX]);
+                if (pig.y === start) { // Top looking down
+                    target = col.find(c => c.active);
+                } else { // Bottom looking up
+                    target = [...col].reverse().find(c => c.active);
+                }
+                if (target && target.active && target.color === pig.color) fire(pig, target, gridX, gridY);
             }
         }
     });
 
-    // Fade projectiles
-    projectiles = projectiles.filter(p => {
-        p.life -= 0.1;
-        return p.life > 0;
-    });
+    projectiles = projectiles.filter(p => (p.life -= 0.1) > 0);
+}
 
-    // Remove pigs with no ammo
-    const finishedPigs = activePigs.filter(p => p.ammo <= 0);
-    finishedPigs.forEach(fp => {
-        pigsInQueue[fp.uID].isOnBelt = false;
+function fire(pig, target, gx, gy) {
+    // To find the actual target object index for ammo subtraction
+    // we need its real coordinates because .find() returned a reference
+    projectiles.push({
+        x: pig.x, y: pig.y,
+        tx: OFFSET + (grid[0].indexOf(target) * cellSize) + cellSize/2, // Rough index find
+        ty: OFFSET + (grid.findIndex(r => r.includes(target)) * cellSize) + cellSize/2,
+        color: pig.color, life: 1
     });
-    activePigs = activePigs.filter(p => p.ammo > 0);
-
-    // Win condition
-    if (imgLoaded && totalPixelsToClear <= 0 && activePigs.length === 0) {
-        totalPixelsToClear = 1;
-        setTimeout(() => alert("🎉 All clear! Happy Birthday!"), 500);
-    }
+    target.active = false;
+    pigsInQueue[pig.uID].current--;
 }
 
 function draw() {
     ctx.clearRect(0, 0, cvs.width, cvs.height);
+    
+    // Draw Grid
+    for(let y=0; y<GRID_SIZE; y++) {
+        for(let x=0; x<GRID_SIZE; x++) {
+            const c = grid[y][x];
+            if(!c.active) continue;
+            ctx.fillStyle = c.color;
+            ctx.beginPath();
+            ctx.roundRect(OFFSET + x*cellSize + 1, OFFSET + y*cellSize + 1, cellSize-2, cellSize-2, 2);
+            ctx.fill();
+        }
+    }
 
-    if(!imgLoaded) return;
-
-    grid.forEach(c => {
-        if(!c.active) return;
-        ctx.fillStyle = c.color;
-        const pad = 1;
-        const r = 2;
-        const x = c.x * cellSize + OFFSET + pad;
-        const y = c.y * cellSize + OFFSET + pad;
-        const s = cellSize - pad * 2;
-        ctx.beginPath();
-        ctx.rect(x, y, s, s);
-        ctx.fill();
-    });
-
+    // Draw Pigs
     activePigs.forEach(p => {
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = p.color;
         ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 8, 0, Math.PI*2);
-        ctx.fill();
+        ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2); ctx.fill();
         ctx.shadowBlur = 0;
-        ctx.fillStyle = "white";
-        ctx.font = "10px Arial";
-        ctx.fillText("🐷", p.x - 6, p.y + 4);
+        ctx.fillStyle = "#fff"; ctx.font = "12px Arial"; ctx.fillText("🐷", p.x-7, p.y+5);
     });
 
+    // Draw Beams
     projectiles.forEach(p => {
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 3;
-        ctx.globalAlpha = p.life;
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.tx, p.ty);
-        ctx.stroke();
+        ctx.strokeStyle = p.color; ctx.lineWidth = 4; ctx.globalAlpha = p.life;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.tx, p.ty); ctx.stroke();
         ctx.globalAlpha = 1;
     });
 }
 
-function loop() {
-    update();
-    draw();
-    requestAnimationFrame(loop);
-}
-
-init
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+init();
 </script>
 </body>
 </html>
