@@ -103,7 +103,7 @@ function deployPig(idx) {
     activePigs.push({
         color: p.color,
         pos: 0, 
-        speed: 4, 
+        speed: 6, 
         uID: idx,
         x: OFFSET, y: OFFSET
     });
@@ -128,23 +128,25 @@ function update() {
         }
 
         // 2. Map perimeter to X/Y
-        if (pig.pos < beltSize) { 
-            // Left edge, moving up
-            pig.x = start; 
-            pig.y = start + beltSize - pig.pos; 
-        } else if (pig.pos < beltSize * 2) { 
-            // Top edge, moving right
-            pig.x = start + (pig.pos - beltSize); 
-            pig.y = start; 
-        } else if (pig.pos < beltSize * 3) { 
-            // Right edge, moving down
-            pig.x = start + beltSize; 
-            pig.y = start + (pig.pos - beltSize * 2); 
-        } else { 
-            // Bottom edge, moving left
-            pig.x = start + beltSize - (pig.pos - beltSize * 3); 
-            pig.y = start + beltSize; 
-        }
+    // Counter-clockwise: right → up → left → down
+    if (pig.pos < beltSize) {
+        // Bottom edge, moving right
+        pig.x = start + pig.pos;
+        pig.y = start + beltSize;
+    } else if (pig.pos < beltSize*2) {
+        // Right edge, moving up
+        pig.x = start + beltSize;
+        pig.y = start + beltSize - (pig.pos - beltSize);
+    } else if (pig.pos < beltSize*3) {
+        // Top edge, moving left
+        pig.x = start + beltSize - (pig.pos - beltSize*2);
+        pig.y = start;
+    } else {
+        // Left edge, moving down
+        pig.x = start;
+        pig.y = start + (pig.pos - beltSize*3);
+    }
+        
         // 3. Shooting Logic: One layer only (Line of Sight)
         // Check alignment with grid rows/cols
         const gridX = Math.floor((pig.x - OFFSET) / cellSize);
@@ -216,6 +218,43 @@ function draw() {
         }
     }
 
+    // Draw raised conveyor track
+    const trackX = start;
+    const trackY = start;
+    const trackSize = beltSize;
+    
+    // Create gradient from top-left to bottom-right
+    const grad = ctx.createLinearGradient(trackX, trackY, trackX + trackSize, trackY + trackSize);
+    grad.addColorStop(0, "#3f5ecf"); // lighter highlight
+    grad.addColorStop(0.5, "#2f43a3"); // main track color
+    grad.addColorStop(1, "#1f2a70"); // darker shadow
+    
+    ctx.fillStyle = grad;
+    
+    // Rounded rectangle function
+    function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x+r, y);
+        ctx.lineTo(x+w-r, y);
+        ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+        ctx.lineTo(x+w, y+h-r);
+        ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+        ctx.lineTo(x+r, y+h);
+        ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+        ctx.lineTo(x, y+r);
+        ctx.quadraticCurveTo(x, y, x+r, y);
+        ctx.closePath();
+    }
+    
+    roundRect(ctx, trackX, trackY, trackSize, trackSize, 8);
+    ctx.fill();
+    
+    // Track border
+    ctx.strokeStyle = "#ffffffaa"; // semi-transparent white
+    ctx.lineWidth = 2;
+    roundRect(ctx, trackX, trackY, trackSize, trackSize, 8);
+    ctx.stroke();
+    
     // Draw Pigs
     activePigs.forEach(p => {
         ctx.fillStyle = p.color;
@@ -237,7 +276,7 @@ function draw() {
         const dx = p.tx - p.x;
         const dy = p.ty - p.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        const speed = 6; // bullet speed
+        const speed = 10; // bullet speed
         if(dist > speed) {
             p.x += (dx/dist) * speed;
             p.y += (dy/dist) * speed;
