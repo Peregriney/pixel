@@ -81,15 +81,51 @@
 const cvs = document.getElementById('canvas');
 const ctx = cvs.getContext('2d');
 const ui = document.getElementById('ui');
-const GRID_SIZE = 50;
-const OFFSET = 50; 
+const GRID_SIZE = 36;
+const OFFSET = 36; 
 let cellSize = 10;
 cvs.width = cvs.height = (GRID_SIZE * cellSize) + (OFFSET * 2);
 let grid = []; 
 let pigsInQueue = [];
 let activePigs = [];
 let projectiles = [];
-const IMG_SOURCE = 'pixil-frame-0.png';
+const IMG_SOURCE = 'pixil-frame-36-a.png';
+
+    // Audio Context for the synthesized "pop"
+let audioCtx;
+
+function initAudio() {
+    // Browsers require audio to be initialized upon a user gesture (like clicking a button)
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+function playPop() {
+    if (!audioCtx) return;
+    
+    // Synthesize a quick bubble pop using an oscillator
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    osc.type = 'sine';
+    // Frequency drop creates the "plop/pop" sound
+    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.05);
+    
+    // Quick volume fade out
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+    
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + 0.05);
+}
 
 function init() {
     const img = new Image();
@@ -167,14 +203,16 @@ function update() {
     const start = OFFSET - 10;
     const perimeter = beltSize * 4;
     const epsilon = 6;
-    
-    activePigs.forEach((pig, pIdx) => {
+    // UPDATED: Iterate backwards so we can safely splice (remove) pigs mid-loop
+    for (let pIdx = activePigs.length - 1; pIdx >= 0; pIdx--) {
+        let pig = activePigs[pIdx];
+        
         pig.pos += pig.speed;
         if (pig.pos >= perimeter) {
             pigsInQueue[pig.uID].onBelt = false;
             activePigs.splice(pIdx, 1);
             renderUI();
-            return;
+            continue; // Move to the next pig in the loop
         }
         
         if (pig.pos < beltSize) {
@@ -221,11 +259,18 @@ function update() {
             }
         }
         
-        if (target) fire(pig, target);
-    });
+        if (target) {
+            fire(pig, target);
+            
+            // NEW: If ammo reached 0, despawn the pig immediately
+            if (pigsInQueue[pig.uID].current <= 0) {
+                activePigs.splice(pIdx, 1);
+            }
+        }
+    }
     
     projectiles = projectiles.filter(p => (p.life -= 0.05) > 0);
-}    
+}
 
 function fire(pig, target) {
     projectiles.push({
@@ -238,6 +283,13 @@ function fire(pig, target) {
     });
     target.active = false;
     pigsInQueue[pig.uID].current--;
+    // Play the pop sound effect
+    playPop();
+    
+    // Re-render UI immediately if ammo runs out to remove the button
+    if (pigsInQueue[pig.uID].current <= 0) {
+        renderUI();
+    }
 }
 
 function draw() {
@@ -287,7 +339,7 @@ function draw() {
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#fff";
-        ctx.font="12px Arial";
+        ctx.font="18px Arial";
         ctx.fillText("🐷",p.x-7,p.y+5);
     });
     
